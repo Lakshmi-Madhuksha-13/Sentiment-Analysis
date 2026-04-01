@@ -1,5 +1,2 @@
 streamlit
-joblib
-scikit-learn
-nltk
-pandas
+textblob
