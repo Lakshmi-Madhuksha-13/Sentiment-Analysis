@@ -7,7 +7,7 @@ from textblob import TextBlob
 # --- CONFIGURATION ---
 DB_FILE = "product_database.json"
 
-# --- DATA SEEDING (Varied Reviews per Product) ---
+# --- DATA SEEDING ---
 def seed_data():
     real_products = [
         "Apple iPhone 15 Pro", "Samsung Galaxy S24 Ultra", "Sony WH-1000XM5", 
@@ -22,50 +22,18 @@ def seed_data():
         "SteelSeries Arctis Nova", "Ember Mug 2", "Tesla Wall Connector"
     ]
 
-    # Specialized Review Pools
-    pos_pool = [
-        "Absolutely incredible, best purchase I've made this year!",
-        "Works exactly as advertised, very happy with the performance.",
-        "High quality build and premium feel. Worth every penny.",
-        "Exceeded my expectations in every way. Highly recommend.",
-        "Fast shipping and great performance so far.",
-        "Beautiful design and works seamlessly with my other devices.",
-        "I can't imagine my daily routine without this anymore!"
-    ]
-    
-    neu_pool = [
-        "It's okay, does the job but nothing special or groundbreaking.",
-        "Average product for an average price. Not bad, not great.",
-        "A bit overpriced for what you get, but it is functional.",
-        "Decent quality, though the initial setup was a bit tricky.",
-        "Not bad, but I have seen better alternatives for less money.",
-        "It works, but the software interface is a bit dated.",
-        "Does what it says on the box, nothing more, nothing less."
-    ]
-    
-    neg_pool = [
-        "Worst experience ever, the device broke after only two days.",
-        "Total waste of money, do not buy this product!",
-        "Very disappointed with the build quality and materials used.",
-        "Customer service was unhelpful and the product is clearly flawed.",
-        "I really regret buying this, it's very glitchy and unreliable.",
-        "Battery life is terrible compared to what was promised.",
-        "It feels cheap and definitely not worth the premium price."
-    ]
+    pos_pool = ["Absolutely incredible, best purchase ever!", "Works exactly as advertised.", "High quality build."]
+    neu_pool = ["It's okay, nothing special.", "Average product for the price.", "Decent quality."]
+    neg_pool = ["Worst experience ever.", "Total waste of money.", "Very disappointed with the quality."]
 
     db = {}
     for product in real_products:
-        # Create a unique mix for every product (e.g., 12 to 15 reviews each)
         count = random.randint(12, 15)
         product_reviews = []
-        
         for _ in range(count):
-            # Randomly pick from the three pools to create a unique sentiment profile
             pool = random.choice([pos_pool, neu_pool, neg_pool])
             product_reviews.append({"review": random.choice(pool)})
-        
         db[product] = product_reviews
-    
     return db
 
 def load_data():
@@ -87,64 +55,77 @@ def get_prediction(text):
     if pol < -0.1: return "Negative", "😠"
     return "Neutral", "😐"
 
-# --- SESSION STATE ---
+# --- NAVIGATION LOGIC ---
 if 'page' not in st.session_state:
-    st.session_state.page = 'browse'
+    st.session_state.page = 'home'
+
+def go_home():
+    st.session_state.page = 'home'
 
 # --- UI SETUP ---
-st.set_page_config(page_title="AI Product Insight Engine", layout="wide")
+st.set_page_config(page_title="AI Product Hub", layout="wide")
 data = load_data()
 
-st.title("🤖 Smart Product Insight Engine")
-st.markdown("Analyze consumer sentiment for real-world products using AI.")
+# --- PAGE: HOME ---
+if st.session_state.page == 'home':
+    st.title("🤖 Welcome to the AI Product Insight Hub")
+    st.subheader("What would you like to do today?")
+    st.write("Our AI engine allows you to explore thousands of reviews or contribute your own to our catalog of 30+ real-world products.")
+    
+    st.divider()
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.info("### 🔍 Browse & Analyze")
+        st.write("View existing reviews for products like iPhone, PS5, and Dyson. Use our AI to predict the sentiment of any review instantly.")
+        if st.button("Explore Reviews", use_container_width=True):
+            st.session_state.page = 'browse'
+            st.rerun()
 
-# Navigation
-col_nav1, col_nav2, _ = st.columns([1.5, 1.5, 7])
-with col_nav1:
-    if st.button("🔍 Browse & Analyze", use_container_width=True):
-        st.session_state.page = 'browse'
-with col_nav2:
-    if st.button("✍️ Add Product Review", use_container_width=True):
-        st.session_state.page = 'add'
+    with col2:
+        st.success("### ✍️ Add a Review")
+        st.write("Share your experience. If a product isn't in our database, you can create it on the fly and leave the very first review.")
+        if st.button("Write a Review", use_container_width=True):
+            st.session_state.page = 'add'
+            st.rerun()
 
-st.divider()
-
-# --- PAGE: BROWSE & ANALYZE ---
-if st.session_state.page == 'browse':
-    st.header("Search & Explore Reviews")
+# --- PAGE: BROWSE ---
+elif st.session_state.page == 'browse':
+    if st.button("⬅️ Back to Home"):
+        go_home()
+        st.rerun()
+        
+    st.header("Search & Analyze Feedback")
     selected_prod = st.selectbox("Select a Product:", sorted(data.keys()))
     
     reviews = data[selected_prod]
-    st.info(f"Showing **{len(reviews)}** randomized reviews for **{selected_prod}**")
+    st.write(f"Total reviews: **{len(reviews)}**")
     
     for i, r in enumerate(reversed(reviews)):
         with st.container(border=True):
-            st.write(f"**Review #{len(reviews)-i}:** \"{r['review']}\"")
-            
+            st.write(f"**Review Content:** \"{r['review']}\"")
             if st.button(f"Analyze Sentiment for Review #{len(reviews)-i}", key=f"btn_{i}"):
                 label, emoji = get_prediction(r['review'])
-                st.success(f"**AI Prediction:** This review is **{label} {emoji}**")
+                st.success(f"**AI Prediction:** {label} {emoji}")
 
-# --- PAGE: ADD REVIEW ---
+# --- PAGE: ADD ---
 elif st.session_state.page == 'add':
-    st.header("Contribute a Review")
-    st.write("Enter a product name. If it isn't in our list of 30, it will be added automatically.")
-    
-    with st.form("new_review_form"):
-        p_name = st.text_input("Product Name", placeholder="e.g. iPhone 15 Pro").strip()
-        r_content = st.text_area("Your Review", placeholder="Share your experience...")
+    if st.button("⬅️ Back to Home"):
+        go_home()
+        st.rerun()
         
-        submitted = st.form_submit_button("Save Review")
-        
-        if submitted:
+    st.header("Contribute to the Catalog")
+    with st.form("add_form"):
+        p_name = st.text_input("Product Name").strip()
+        r_content = st.text_area("Your Review")
+        if st.form_submit_button("Save & Submit"):
             if p_name and r_content:
                 if p_name not in data:
                     data[p_name] = []
-                    st.toast(f"New product '{p_name}' created!", icon="✨")
-                
                 data[p_name].append({"review": r_content})
                 save_data(data)
-                st.success(f"Review for '{p_name}' saved!")
+                st.success("Review Saved!")
                 st.balloons()
             else:
-                st.error("Both product name and review content are required.")
+                st.error("Please fill in all fields.")
