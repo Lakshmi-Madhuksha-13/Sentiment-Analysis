@@ -2,3 +2,6 @@ streamlit
 joblib
 scikit-learn
 nltk
+pandas
+beautifulsoup4
+requests
