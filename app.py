@@ -49,11 +49,9 @@ def save_data(data):
     with open(DB_FILE, "w") as f:
         json.dump(data, f)
 
-def get_prediction(text):
-    pol = TextBlob(text).sentiment.polarity
-    if pol > 0.1: return "Positive", "😊"
-    if pol < -0.1: return "Negative", "😠"
-    return "Neutral", "😐"
+def get_prediction_score(text):
+    # Returns the raw polarity score
+    return TextBlob(text).sentiment.polarity
 
 # --- NAVIGATION LOGIC ---
 if 'page' not in st.session_state:
@@ -70,22 +68,21 @@ data = load_data()
 if st.session_state.page == 'home':
     st.title("🤖 Welcome to the AI Product Insight Hub")
     st.subheader("What would you like to do today?")
-    st.write("Our AI engine allows you to explore thousands of reviews or contribute your own to our catalog of 30+ real-world products.")
+    st.write("Our AI engine allows you to explore thousands of reviews or contribute your own to our catalog.")
     
     st.divider()
-    
     col1, col2 = st.columns(2)
     
     with col1:
-        st.info("### 🔍 Browse & Analyze")
-        st.write("View existing reviews for products like iPhone, PS5, and Dyson. Use our AI to predict the sentiment of any review instantly.")
+        st.info("### 🔍 Browse & Overall Prediction")
+        st.write("View existing reviews and get an AI-powered 'Overall Consensus' for any product.")
         if st.button("Explore Reviews", use_container_width=True):
             st.session_state.page = 'browse'
             st.rerun()
 
     with col2:
         st.success("### ✍️ Add a Review")
-        st.write("Share your experience. If a product isn't in our database, you can create it on the fly and leave the very first review.")
+        st.write("Share your experience. If a product isn't in our database, you can create it on the fly.")
         if st.button("Write a Review", use_container_width=True):
             st.session_state.page = 'add'
             st.rerun()
@@ -96,18 +93,36 @@ elif st.session_state.page == 'browse':
         go_home()
         st.rerun()
         
-    st.header("Search & Analyze Feedback")
+    st.header("Search & Overall Analysis")
     selected_prod = st.selectbox("Select a Product:", sorted(data.keys()))
-    
     reviews = data[selected_prod]
-    st.write(f"Total reviews: **{len(reviews)}**")
+
+    # --- OVERALL PREDICTION LOGIC ---
+    st.subheader("📊 Overall Product Sentiment")
+    if st.button(f"Analyze Overall Sentiment for {selected_prod}", use_container_width=True):
+        if reviews:
+            # Sum up all scores
+            total_score = sum(get_prediction_score(r['review']) for r in reviews)
+            avg_score = total_score / len(reviews)
+            
+            # Determine overall label
+            if avg_score > 0.1:
+                st.success(f"### Overall Verdict: POSITIVE 😊")
+                st.write(f"Based on {len(reviews)} reviews, customers generally love this product.")
+            elif avg_score < -0.1:
+                st.error(f"### Overall Verdict: NEGATIVE 😠")
+                st.write(f"Based on {len(reviews)} reviews, customers are generally dissatisfied.")
+            else:
+                st.warning(f"### Overall Verdict: NEUTRAL 😐")
+                st.write(f"Based on {len(reviews)} reviews, feedback is mixed or indifferent.")
+        else:
+            st.info("No reviews available for this product yet.")
     
-    for i, r in enumerate(reversed(reviews)):
+    st.divider()
+    st.write(f"**Detailed Review History ({len(reviews)} reviews):**")
+    for r in reversed(reviews):
         with st.container(border=True):
-            st.write(f"**Review Content:** \"{r['review']}\"")
-            if st.button(f"Analyze Sentiment for Review #{len(reviews)-i}", key=f"btn_{i}"):
-                label, emoji = get_prediction(r['review'])
-                st.success(f"**AI Prediction:** {label} {emoji}")
+            st.write(f"\"{r['review']}\"")
 
 # --- PAGE: ADD ---
 elif st.session_state.page == 'add':
@@ -129,3 +144,4 @@ elif st.session_state.page == 'add':
                 st.balloons()
             else:
                 st.error("Please fill in all fields.")
+                
