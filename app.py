@@ -2,23 +2,22 @@ import streamlit as st
 import joblib
 import re
 import nltk
+import requests
+import pandas as pd
+from bs4 import BeautifulSoup
 from nltk.corpus import stopwords
 from nltk.stem import PorterStemmer
 
-# --- STEP 1: FIX NLTK DOWNLOADS FOR CLOUD ---
-# This block ensures the data is downloaded before the app tries to use it
+# --- Setup & Data Loading ---
 try:
     nltk.data.find('corpora/stopwords')
 except LookupError:
     nltk.download('stopwords')
 
-# Initialize NLP tools
 stop_words = set(stopwords.words('english'))
 stemmer = PorterStemmer()
 
-# --- STEP 2: LOAD MODEL ASSETS ---
-# Using joblib to handle compressed files (better for large Random Forest models)
-@st.cache_resource # This keeps the model in memory so the app stays fast
+@st.cache_resource
 def load_assets():
     model = joblib.load('sentiment_model.pkl')
     tfidf = joblib.load('tfidf_vectorizer.pkl')
@@ -26,53 +25,71 @@ def load_assets():
 
 model, tfidf = load_assets()
 
-# --- STEP 3: PREPROCESSING FUNCTION ---
 def clean_text(text):
-    # Remove HTML tags
     text = re.sub(r'<.*?>', '', text)
-    # Remove non-alphabetic characters and lowercase
     text = re.sub('[^a-zA-Z]', ' ', text).lower()
-    # Tokenize, remove stopwords, and apply Stemming
     words = text.split()
     words = [stemmer.stem(w) for w in words if w not in stop_words]
     return ' '.join(words)
 
-# --- STEP 4: STREAMLIT USER INTERFACE ---
-st.set_page_config(page_title="Sentify AI", page_icon="🎬", layout="centered")
+# --- NEW: Scraping Function ---
+def scrape_reviews(url):
+    try:
+        response = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'})
+        soup = BeautifulSoup(response.content, 'html.parser')
+        # This selector works for many common review sites; adjust as needed
+        reviews = [g.text for g in soup.find_all('div', class_='text show-more__control')] 
+        return reviews
+    except Exception as e:
+        return []
 
-st.title("🎬 Sentify: Movie Review Classifier")
-st.markdown("""
-Welcome to **Sentify**! This AI uses a *Random Forest* machine learning model 
-to determine if a movie review is positive or negative.
-""")
+# --- UI ---
+st.set_page_config(page_title="Movie Pulse AI", layout="wide")
+st.title("🎬 Movie Pulse: Bulk Sentiment Aggregator")
 
-# Text input area
-user_input = st.text_area("Paste your movie review here:", height=150, placeholder="The acting was incredible, but the script felt a bit rushed...")
+tab1, tab2 = st.tabs(["Analyze URL (Bulk)", "Manual Input"])
 
-if st.button("Predict Sentiment"):
-    if user_input.strip():
-        with st.spinner('Analyzing sentiment...'):
-            # 1. Preprocess the input
-            cleaned_text = clean_text(user_input)
-            
-            # 2. Vectorize the input
-            vectorized_input = tfidf.transform([cleaned_text])
-            
-            # 3. Make Prediction
-            prediction = model.predict(vectorized_input)[0]
-            probabilities = model.predict_proba(vectorized_input)
-            
-            # 4. Display Results
-            st.divider()
-            if prediction == 1:
-                st.success(f"### Result: Positive Sentiment 😊")
-                st.write(f"**Confidence Level:** {probabilities[0][1]*100:.2f}%")
-            else:
-                st.error(f"### Result: Negative Sentiment ☹️")
-                st.write(f"**Confidence Level:** {probabilities[0][0]*100:.2f}%")
-    else:
-        st.warning("Please enter a review before clicking predict.")
+# TAB 1: BULK ANALYSIS
+with tab1:
+    st.subheader("Analyze Overall Movie Sentiment")
+    movie_url = st.text_input("Paste an IMDb User Reviews URL:", placeholder="https://www.imdb.com/title/tt1375666/reviews")
+    
+    if st.button("Aggregate Reviews"):
+        if movie_url:
+            with st.spinner("Scraping and analyzing reviews..."):
+                raw_reviews = scrape_reviews(movie_url)
+                if raw_reviews:
+                    # Predict all
+                    cleaned = [clean_text(r) for r in raw_reviews]
+                    vecs = tfidf.transform(cleaned)
+                    preds = model.predict(vecs)
+                    
+                    # Calculate Metrics
+                    pos_count = sum(preds)
+                    total = len(preds)
+                    pos_percent = (pos_count / total) * 100
+                    
+                    # Dashboard
+                    col1, col2, col3 = st.columns(3)
+                    col1.metric("Total Reviews Found", total)
+                    col2.metric("Positive Sentiment", f"{pos_percent:.1f}%")
+                    col3.metric("Negative Sentiment", f"{100-pos_percent:.1f}%")
+                    
+                    if pos_percent > 60:
+                        st.success(f"### Verdict: Highly Recommended! 😊")
+                    elif pos_percent > 40:
+                        st.warning(f"### Verdict: Mixed Reviews 😐")
+                    else:
+                        st.error(f"### Verdict: Mostly Negative ☹️")
+                else:
+                    st.error("Could not find reviews. Ensure the URL is correct and public.")
+        else:
+            st.warning("Please enter a valid URL.")
 
-# Footer info
-st.sidebar.markdown("---")
-st.sidebar.info("Model: Random Forest\n\nFeatures: TF-IDF N-Grams\n\nDataset: IMDb 50k Reviews")
+# TAB 2: MANUAL INPUT
+with tab2:
+    st.subheader("Test a Single Review")
+    user_input = st.text_area("Review text:")
+    if st.button("Predict"):
+        res = model.predict(tfidf.transform([clean_text(user_input)]))[0]
+        st.write("Positive" if res == 1 else "Negative")
